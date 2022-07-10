@@ -173,10 +173,20 @@ class DomExtSnapshot:
         for d in sorted(all_domain_disks.keys()):
             disk_el = lxml.etree.Element("disk")
             disk_el.attrib["name"] = d
-            # Skipped disks need to have an entry, with a snapshot value
-            # explicitly set to "no", otherwise libvirt will be created a
-            # snapshot for them.
-            disk_el.attrib["snapshot"] = "external" if d in self.disks else "no"
+            if isinstance(all_domain_disks[d]["src"], dict):
+                if "pool" not in all_domain_disks[d]["src"]:
+                    continue
+                storage_pool = self.conn.storagePoolLookupByName(all_domain_disks[d]["src"]["pool"])
+                storage_volume = storage_pool.storageVolLookupByName(all_domain_disks[d]["src"]["volume"])
+                path = storage_volume.path()
+                source_el = lxml.etree.Element("source")
+                source_el.text = path
+                disk_el.append(source_el)
+            else:
+                # Skipped disks need to have an entry, with a snapshot value
+                # explicitly set to "no", otherwise libvirt will be created a
+                # snapshot for them.
+                disk_el.attrib["snapshot"] = "external" if d in self.disks else "no"
             disks_el.append(disk_el)
 
         non_snapshotable_disks = get_domain_incompatible_disks_of(

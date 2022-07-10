@@ -1,6 +1,9 @@
 import logging
 import re
+from typing import Optional
+
 import lxml.etree
+import libvirt
 
 from virt_backup.exceptions import DiskNotFoundError
 
@@ -28,9 +31,10 @@ def get_domain_disks_of(dom_xml, *filter_dev):
             if elem.get("device", None) != "disk":
                 continue
 
-            if elem.get("type", None) != "file":
+            source_type = elem.get("type", None)
+            if source_type not in ("file", "volume"):
                 logger.debug(
-                    "Disk %s is not a file, which not compatible with virt-backup",
+                    "Disk %s is not a file or volume, which not compatible with virt-backup",
                     elem.xpath("target")[0].get("dev"),
                 )
                 continue
@@ -38,9 +42,16 @@ def get_domain_disks_of(dom_xml, *filter_dev):
             dev = elem.xpath("target")[0].get("dev")
             if filter_dev and dev not in filter_dev:
                 continue
-            src = elem.xpath("source")[0].get("file")
+            if source_type == "file":
+                src = elem.xpath("source")[0].get("file")
+            elif source_type == "volume":
+                src = {
+                    "pool": elem.xpath("source")[0].get("pool"),
+                    "volume": elem.xpath("source")[0].get("volume"),
+                }
+            else:
+                src = None
             disk_type = elem.xpath("driver")[0].get("type")
-
             disks[dev] = {"src": src, "type": disk_type}
 
             # all disks captured
@@ -72,7 +83,7 @@ def get_domain_incompatible_disks_of(dom_xml, *filter_dev):
             if elem.get("device", None) != "disk":
                 continue
 
-            if elem.get("type", None) == "file":
+            if elem.get("type", None) in ("file", "volume"):
                 continue
 
             dev = elem.xpath("target")[0].get("dev")
